@@ -1008,7 +1008,18 @@ namespace ProtoBuf.Meta
                     static bool IsPublicSetter(MethodInfo method)
                     {
                         if (method is null) return false;
-                        foreach (Type modreq in method.ReturnParameter?.GetRequiredCustomModifiers() ?? Type.EmptyTypes)
+                        // IL2CPP does not support GetRequiredCustomModifiers (GetTypeModifiers icall).
+                        // On IL2CPP this will throw NotSupportedException — treat as no init-only modifier.
+                        Type[] modreqs;
+                        try
+                        {
+                            modreqs = method.ReturnParameter?.GetRequiredCustomModifiers() ?? Type.EmptyTypes;
+                        }
+                        catch (NotSupportedException)
+                        {
+                            return true;
+                        }
+                        foreach (Type modreq in modreqs)
                         {
                             if (modreq?.FullName == "System.Runtime.CompilerServices.IsExternalInit") return false;
                         }
@@ -1810,14 +1821,37 @@ namespace ProtoBuf.Meta
             var original = Serializer; // might lazily create
             if (original is ICompiledSerializer || original.ExpectedType.IsEnum || model.TryGetRepeatedProvider(Type) is not null)
                 return; // nothing to do
-            
-            var wrapped = CompiledSerializer.Wrap(original, model);
+
+            // On IL2CPP there is no JIT, so CompilerContext.Build* throws PlatformNotSupportedException
+            // for any serializer that requires IL emit (surrogates, inheritance, etc.).
+            // In that case leave the reflection-based serializer in place — it is correct, just slower.
+            ICompiledSerializer wrapped;
+            try
+            {
+                wrapped = CompiledSerializer.Wrap(original, model);
+            }
+            catch (Exception ex) when (IsPlatformNotSupported(ex))
+            {
+                // IL2CPP does not support IL emit; this type will use the reflection-based serializer.
+                System.Diagnostics.Trace.WriteLine($"[protobuf-net] CompileInPlace skipped for {Type.FullName}: IL emit not supported on this platform (reflection path will be used).");
+                return;
+            }
             if (!ReferenceEquals(original, wrapped))
             {
                 _serializer = (IProtoTypeSerializer) wrapped;
                 Model.ResetServiceCache(Type);
             }
             
+        }
+
+        private static bool IsPlatformNotSupported(Exception ex)
+        {
+            while (ex is not null)
+            {
+                if (ex is PlatformNotSupportedException) return true;
+                ex = ex.InnerException;
+            }
+            return false;
         }
 
         internal bool IsDefined(int fieldNumber)
