@@ -1,0 +1,120 @@
+name: Release
+
+on:
+  push:
+    branches: [ "main" ]
+
+permissions:
+  contents: write
+  packages: write
+
+jobs:
+  release:
+    runs-on: windows-latest
+
+    steps:
+    - uses: actions/checkout@v4
+      with:
+        fetch-depth: 0
+
+    - name: Setup .NET
+      uses: actions/setup-dotnet@v4
+      with:
+        dotnet-version: |
+          8.0.x
+          9.0.x
+
+    - name: Restore dependencies
+      run: dotnet restore Build.csproj
+
+    - name: Build
+      run: dotnet build Build.csproj --no-restore -c Release /p:Packing=true /p:PublicRelease=true
+
+    - name: Get version
+      id: version
+      run: |
+        $pkg = Get-ChildItem -Path src/protobuf-net.Core/bin/Release -Filter "*.nupkg" | Select-Object -First 1
+        $version = $pkg.Name -replace '^Heru\.protobuf-net\.Core\.' -replace '\.nupkg$'
+        echo "VERSION=$version" >> $env:GITHUB_OUTPUT
+
+    - name: Collect DLLs
+      shell: bash
+      run: |
+        version="${{ steps.version.outputs.VERSION }}"
+        staging="staging"
+        mkdir -p "$staging"
+
+        projects=(
+          protobuf-net
+          protobuf-net.Core
+          protobuf-net.Reflection
+          protobuf-net.ServiceModel
+          protobuf-net.AspNetCore
+          protobuf-net.HybridCache
+          protobuf-net.NodaTime
+          protobuf-net.FSharp
+          protobuf-net.MessagePipes
+          protobuf-net.BuildTools
+          protobuf-net.BuildTools.Legacy
+          protobuf-net.Protogen
+        )
+
+        for proj in "${projects[@]}"; do
+          bin_dir="src/$proj/bin/Release"
+          if [ ! -d "$bin_dir" ]; then
+            continue
+          fi
+          for fw_dir in "$bin_dir"/*/; do
+            fw=$(basename "$fw_dir")
+            dest="$staging/$fw"
+            mkdir -p "$dest"
+            cp "$fw_dir"*.dll "$dest/" 2>/dev/null || true
+            cp "$fw_dir"*.xml "$dest/" 2>/dev/null || true
+          done
+        done
+
+        # Also collect the protogen executable
+        protogen_dir="src/protogen/bin/Release"
+        if [ -d "$protogen_dir" ]; then
+          for fw_dir in "$protogen_dir"/*/; do
+            fw=$(basename "$fw_dir")
+            dest="$staging/$fw"
+            mkdir -p "$dest"
+            cp "$fw_dir"protogen* "$dest/" 2>/dev/null || true
+          done
+        fi
+
+    - name: Zip artifacts
+      shell: bash
+      run: |
+        version="${{ steps.version.outputs.VERSION }}"
+        cd staging
+        for fw_dir in */; do
+          fw="${fw_dir%/}"
+          7z a -tzip "../protobuf-net-${version}-${fw}.zip" "$fw_dir"*
+        done
+
+    - name: Push to GitHub Packages
+      run: |
+        dotnet nuget add source "https://nuget.pkg.github.com/${{ github.repository_owner }}/index.json" `
+          --name github `
+          --username ${{ github.repository_owner }} `
+          --password ${{ secrets.GITHUB_TOKEN }} `
+          --store-password-in-clear-text
+
+        foreach ($pkg in Get-ChildItem -Path src -Recurse -Filter "*.nupkg") {
+          dotnet nuget push $pkg.FullName --source github --api-key ${{ secrets.GITHUB_TOKEN }} --skip-duplicate
+        }
+
+    - name: Create tag and GitHub Release
+      env:
+        GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      run: |
+        $version = "${{ steps.version.outputs.VERSION }}"
+        $tag = "v$version"
+        git tag $tag
+        git push origin $tag
+        gh release create $tag --title "$tag" --generate-notes
+        foreach ($zip in Get-ChildItem -Filter "protobuf-net-*.zip") {
+          gh release upload $tag $zip.FullName
+        }

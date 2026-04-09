@@ -1,20 +1,22 @@
 <Project>
     <PropertyGroup>
         <RootNamespace>ProtoBuf</RootNamespace>
-        <Authors>Marc Gravell</Authors>
+        <PackageId>Heru.$(MSBuildProjectName)</PackageId>
+        <Authors>Rony Kashem</Authors>
+        <Company>Heru, Inc</Company>
         <OutputType>Library</OutputType>
         <SignAssembly>true</SignAssembly>
         <DelaySign>False</DelaySign>
         <NoWarn>NU5105;CS1701;BC42016;IDE0057;IDE0090;IDE0079;NU5048</NoWarn>
         <AssemblyOriginatorKeyFile>$(MSBuildThisFileDirectory)ProtoBuf.snk</AssemblyOriginatorKeyFile>
-        <Copyright>See https://github.com/protobuf-net/protobuf-net</Copyright>
+        <Copyright>See https://github.com/heru-inc/protobuf-net</Copyright>
         <PackageLicenseExpression>Apache-2.0</PackageLicenseExpression>
-        <PackageProjectUrl>https://github.com/protobuf-net/protobuf-net</PackageProjectUrl>
-        <RepositoryUrl>https://github.com/protobuf-net/protobuf-net</RepositoryUrl>
+        <PackageProjectUrl>https://github.com/heru-inc/protobuf-net</PackageProjectUrl>
+        <RepositoryUrl>https://github.com/heru-inc/protobuf-net</RepositoryUrl>
         <RepositoryType>git</RepositoryType>
         <PackageIcon>protobuf-net.png</PackageIcon>
         <Product>protobuf-net ($(TargetFramework))</Product>
-        <PackageReleaseNotes>https://protobuf-net.github.io/protobuf-net/releasenotes#$(VersionPrefix)</PackageReleaseNotes>
+        <PackageReleaseNotes>https://github.com/heru-inc/protobuf-net/releases/tag/v$(Version)</PackageReleaseNotes>
 
         <PackageTags>binary;serialization;protobuf</PackageTags>
 
